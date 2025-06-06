@@ -55,9 +55,10 @@ if _SUPPORTS_FLEX_ATTENTION:
         v: torch.Tensor,
         score_mod: Optional[_score_mod_signature],
         block_mask: BlockMask,
+        scale: Optional[float] = None,
     ) -> torch.Tensor:
         return flex_attention_compiled(
-            q, k, v, score_mod=score_mod, block_mask=block_mask
+            q, k, v, score_mod=score_mod, block_mask=block_mask, scale=scale
         )
 
     _MaskType = Union[torch.Tensor, BlockMask]
@@ -204,6 +205,7 @@ def _sdpa_or_flex_attention() -> Callable:
         # Args is unused, but listed for consistency with the flex attention
         _score_mod: Optional[Callable],
         mask: Optional[_MaskType],
+        scale: Optional[float],
         dropout_p: float,
         is_causal: bool,
     ) -> torch.Tensor:
@@ -213,7 +215,13 @@ def _sdpa_or_flex_attention() -> Callable:
 
         # Flash attention from https://pytorch.org/blog/accelerating-large-language-models/
         return nn.functional.scaled_dot_product_attention(
-            q, k, v, attn_mask=mask, dropout_p=dropout_p, is_causal=is_causal
+            q,
+            k,
+            v,
+            attn_mask=mask,
+            dropout_p=dropout_p,
+            is_causal=is_causal,
+            scale=scale,
         )
 
     if not _SUPPORTS_FLEX_ATTENTION:
@@ -226,6 +234,7 @@ def _sdpa_or_flex_attention() -> Callable:
         v: torch.Tensor,
         score_mod: Optional[_score_mod_signature],
         mask: Optional[_MaskType],
+        scale: Optional[float],
         dropout_p: float,
         is_causal: bool,
     ) -> torch.Tensor:
@@ -252,10 +261,11 @@ def _sdpa_or_flex_attention() -> Callable:
                 v,
                 score_mod=score_mod,
                 block_mask=mask,
+                scale=scale,
             )
         else:
             # If mask is a standard boolean tensor or None, then use SDPA
-            return _sdpa_call(q, k, v, score_mod, mask, dropout_p, is_causal)
+            return _sdpa_call(q, k, v, score_mod, mask, scale, dropout_p, is_causal)
 
     return _attention_call
 
