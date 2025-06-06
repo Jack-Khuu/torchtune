@@ -377,10 +377,11 @@ class SDPA(nn.Module):
             q,
             k,
             v,
-            score_mod=None,
             mask=mask,
             dropout_p=self.attn_dropout,
             is_causal=self.kv_cache is None and mask is None and self.is_causal,
+            score_mod=None,
+            scale=None,
         )
         # Reshape the output to be the same shape as the input
         return output.transpose(1, 2).contiguous().view(bsz, seq_len, -1)
