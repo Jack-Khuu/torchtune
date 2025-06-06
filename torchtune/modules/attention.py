@@ -5,7 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import logging
-from typing import Optional
+from typing import Callable, Optional
 
 import torch
 from torch import nn
@@ -185,6 +185,7 @@ class MultiHeadAttention(nn.Module):
         *,
         mask: Optional[_MaskType] = None,
         input_pos: Optional[torch.Tensor] = None,
+        score_mod: Optional[Callable] = None,
     ) -> torch.Tensor:
         """
         Args:
@@ -209,6 +210,9 @@ class MultiHeadAttention(nn.Module):
                 of each token relative to its sample when packed, shape [b x s].
                 During inference, this indicates the position of the current token.
                 If none, assume the index of the token is its position id. Default is None.
+            score_mod (Optional[Callable]): Used to modify the scores after the query-key multiplication
+                and before the softmax. Only leveraged when using flexattention. https://pytorch.org/blog/flexattention/
+                Default is None.
 
         Raises:
             ValueError: If no ``y`` input and ``kv_cache`` is not enabled.
@@ -293,6 +297,7 @@ class MultiHeadAttention(nn.Module):
             q,
             k,
             v,
+            score_mod=score_mod,
             mask=mask,
             dropout_p=self.attn_dropout if self.training else 0.0,
             is_causal=self.kv_cache is None and mask is None and self.is_causal,
