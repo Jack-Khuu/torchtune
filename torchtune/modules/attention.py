@@ -186,7 +186,6 @@ class MultiHeadAttention(nn.Module):
         mask: Optional[_MaskType] = None,
         input_pos: Optional[torch.Tensor] = None,
         score_mod: Optional[Callable] = None,
-        scale: Optional[float] = None,
     ) -> torch.Tensor:
         """
         Args:
@@ -214,8 +213,6 @@ class MultiHeadAttention(nn.Module):
             score_mod (Optional[Callable]): Used to modify the scores after the query-key multiplication
                 and before the softmax. Only leveraged when using flexattention. https://pytorch.org/blog/flexattention/
                 Default is None.
-            scale (Optional[float]): Used to scale the query before the query-key multiplication
-                Default is None (no scaling).
 
         Raises:
             ValueError: If no ``y`` input and ``kv_cache`` is not enabled.
