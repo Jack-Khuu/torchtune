@@ -377,6 +377,7 @@ class SDPA(nn.Module):
             q,
             k,
             v,
+            score_mod=None,
             mask=mask,
             dropout_p=self.attn_dropout,
             is_causal=self.kv_cache is None and mask is None and self.is_causal,
