@@ -4,6 +4,7 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from functools import partial
 from typing import Optional
 
 import torch
@@ -26,6 +27,12 @@ from torchtune.modules.common_utils import _register_reparametrize_state_dict_ho
 from torchtune.modules.peft import DoRALinear, LORA_ATTN_MODULES, LoRALinear
 
 from torchtune.utils._import_guard import _SUPPORTS_FLEX_ATTENTION
+
+if _SUPPORTS_FLEX_ATTENTION:
+    from torchtune.models.gemma2._attention_mask import (
+        get_sliding_attention_mask,
+        get_softcap_score_mod,
+    )
 
 """
 Component builders for the Gemma2 2B, 9B models and popular variants such as LoRA.
@@ -122,8 +129,8 @@ def gemma2(
     layers = torch.nn.ModuleList()
     for layer_idx in range(num_layers):
 
-        # Since nn.SPDA doesn't play well with SoftCapping, a custom implementation
-        # is used when flex isn't available
+        # Since `nn.SPDA` doesn't support SoftCapping, soft capping is skipped
+        # when using `nn.SPDA` for attention
         if _SUPPORTS_FLEX_ATTENTION:
             self_att = MultiHeadAttention(
                 embed_dim=embed_dim,
@@ -138,6 +145,16 @@ def gemma2(
                 kv_cache=None,
                 max_seq_len=max_seq_len,
                 attn_dropout=attn_dropout,
+                score_mod=get_softcap_score_mod(hidden_capping_value),
+                scale=(query_pre_attn_scalar or head_dim) ** -0.5,
+            )
+            # Sliding window is applied on half of the layers only
+            mask_mod = (
+                partial(
+                    get_sliding_attention_mask, sliding_window_size=sliding_window_size
+                )
+                if (layer_idx % 2) == 0
+                else None
             )
         else:
             self_att = Gemma2Attention(
@@ -161,6 +178,7 @@ def gemma2(
                 softcapping=hidden_capping_value,
                 query_pre_attn_scalar=query_pre_attn_scalar,
             )
+            mask_mod = None
 
         mlp = gemma_mlp(dim=embed_dim, hidden_dim=intermediate_dim)
         layer = TransformerSelfAttentionLayer(
@@ -170,9 +188,7 @@ def gemma2(
             mlp_norm=GemmaRMSNorm(embed_dim, eps=norm_eps),
             sa_scale=GemmaRMSNorm(embed_dim, eps=norm_eps),
             mlp_scale=GemmaRMSNorm(embed_dim, eps=norm_eps),
-            # TODO: Set mask_mod
-            # mask_mod=get_sliding_mask_modif _SUPPORTS_FLEX_ATTENTION else None,
-            mask_mod=None,
+            mask_mod=mask_mod,
         )
         layers.append(layer)
 

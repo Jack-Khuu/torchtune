@@ -71,6 +71,11 @@ class MultiHeadAttention(nn.Module):
         is_causal (bool): sets the default mask to causal when no mask is provided
         attn_dropout (float): dropout value passed onto the scaled_dot_product_attention function.
             Default value is 0.0.
+        score_mod (Optional[Callable]): True type is `flex_attention._score_mod_signature`. Used to modify the
+            scores after the query-key multiplication and before the softmax. Only leveraged when using
+            flexattention. Default is None.
+        scale (Optional[float]): Optional arg, passed to attention implementations to modify the scores after
+            query-key multiplication before the softmax. Default is None.
 
     Raises:
         ValueError:
@@ -98,6 +103,8 @@ class MultiHeadAttention(nn.Module):
         max_seq_len: int = 4096,
         is_causal: bool = True,
         attn_dropout: float = 0.0,
+        score_mod: Optional[Callable] = None,
+        scale: Optional[float] = None,
     ) -> None:
         super().__init__()
         if num_heads % num_kv_heads != 0:
@@ -138,6 +145,10 @@ class MultiHeadAttention(nn.Module):
 
         # Use flex attention if supported and we are sample packing
         self._attention_call = _sdpa_or_flex_attention()
+
+        # Set attention arguments
+        self.score_mod = score_mod
+        self.scale = scale
 
         # this flag indicates whether to update the kv-cache during forward
         # passes. when disabled, we can have the cache setup but still
@@ -185,8 +196,6 @@ class MultiHeadAttention(nn.Module):
         *,
         mask: Optional[_MaskType] = None,
         input_pos: Optional[torch.Tensor] = None,
-        score_mod: Optional[Callable] = None,
-        scale: Optional[float] = None,
     ) -> torch.Tensor:
         """
         Args:
@@ -211,11 +220,6 @@ class MultiHeadAttention(nn.Module):
                 of each token relative to its sample when packed, shape [b x s].
                 During inference, this indicates the position of the current token.
                 If none, assume the index of the token is its position id. Default is None.
-            score_mod (Optional[Callable]): Used to modify the scores after the query-key multiplication
-                and before the softmax. Only leveraged when using flexattention. https://pytorch.org/blog/flexattention/
-                Default is None.
-            scale (Optional[float]): Used to scale the query before the query-key multiplication
-                Default is None (no scaling).
 
         Raises:
             ValueError: If no ``y`` input and ``kv_cache`` is not enabled.
@@ -300,9 +304,9 @@ class MultiHeadAttention(nn.Module):
             q,
             k,
             v,
-            score_mod=score_mod,
+            score_mod=self.score_mod,
             mask=mask,
-            scale=scale,
+            scale=self.scale,
             dropout_p=self.attn_dropout if self.training else 0.0,
             is_causal=self.kv_cache is None and mask is None and self.is_causal,
         )
