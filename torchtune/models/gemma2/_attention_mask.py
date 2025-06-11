@@ -50,10 +50,16 @@ if _SUPPORTS_FLEX_ATTENTION:
         Inspired by https://pytorch.org/blog/flexattention/
 
         Args:
-            sliding_window (int): Sliding window size to apply to the attention mask.
+            mask (Optional[_MaskType]): Mask to apply to the attention scores.
+            sliding_window_size (int): Sliding window size to apply to the attention mask.
+            bsz (int): Batch size.
+            seq_len (int): Sequence length.
 
         Returns:
             A flex attention mask mod that applies sliding window masking.
+
+        Raises:
+            ValueError: If flex attention is not supported or mask has a wrong type.
         """
         if not _SUPPORTS_FLEX_ATTENTION:
             raise ValueError("Local attention is only supported with flex attention.")

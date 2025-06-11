@@ -272,9 +272,22 @@ def lora_gemma2(
 
     tok_embeddings = GemmaNormEmbeddings(vocab_size, embed_dim)
     output_proj = TiedLinear(tok_embeddings)
-
     layers = nn.ModuleList()
     for layer_idx in range(num_layers):
+        if apply_lora_to_mlp:
+            mlp = lora_gemma_mlp(
+                dim=embed_dim,
+                hidden_dim=intermediate_dim,
+                lora_rank=lora_rank,
+                lora_alpha=lora_alpha,
+                lora_dropout=lora_dropout,
+                use_dora=use_dora,
+                quantize_base=quantize_base,
+            )
+        else:
+            mlp = gemma_mlp(
+                dim=embed_dim, hidden_dim=intermediate_dim, quantize_base=quantize_base
+            )
         self_att = lora_gemma2_self_attention(
             lora_modules=lora_attn_modules,
             embed_dim=embed_dim,
@@ -294,21 +307,6 @@ def lora_gemma2(
             use_dora=use_dora,
             quantize_base=quantize_base,
         )
-
-        if apply_lora_to_mlp:
-            mlp = lora_gemma_mlp(
-                dim=embed_dim,
-                hidden_dim=intermediate_dim,
-                lora_rank=lora_rank,
-                lora_alpha=lora_alpha,
-                lora_dropout=lora_dropout,
-                use_dora=use_dora,
-                quantize_base=quantize_base,
-            )
-        else:
-            mlp = gemma_mlp(
-                dim=embed_dim, hidden_dim=intermediate_dim, quantize_base=quantize_base
-            )
 
         layer = TransformerSelfAttentionLayer(
             attn=self_att,

@@ -112,6 +112,7 @@ class TestSDPAOrFlexAttention:
         k = torch.ones(2, 1, 3, 4)
         v = torch.ones(2, 1, 3, 4)
         attn_mask = torch.ones(2, 3, 3)
+        scale = 4**-0.5
         dropout_p = 0.0
         is_causal = False
 
@@ -121,13 +122,17 @@ class TestSDPAOrFlexAttention:
         ):
             _attention_call = _sdpa_or_flex_attention()
             score_mod = lambda score, _b, _h, _q_idx, kv_idx: score
-            _ = _attention_call(q, k, v, score_mod, attn_mask, dropout_p, is_causal)
+            _ = _attention_call(
+                q, k, v, score_mod, attn_mask, scale, dropout_p, is_causal
+            )
             mock_sdpa.assert_not_called()
-            mock_flex.assert_called_with(q, k, v, block_mask=attn_mask)
+            mock_flex.assert_called_with(
+                q, k, v, score_mod=score_mod, block_mask=attn_mask, scale=scale
+            )
         # If mask is not a BlockMask, then we should call SDPA
         _attention_call = _sdpa_or_flex_attention()
         score_mod = None
-        _ = _attention_call(q, k, v, score_mod, attn_mask, dropout_p, is_causal)
+        _ = _attention_call(q, k, v, score_mod, attn_mask, scale, dropout_p, is_causal)
         mock_sdpa.assert_called_once()
         assert mock_flex.call_count == 1
 
@@ -142,8 +147,9 @@ class TestSDPAOrFlexAttention:
         v = torch.ones(2, 1, 3, 4)
         score_mod = None
         attn_mask = torch.ones(2, 3, 3)
+        scale = 4**-0.5
         dropout_p = 0.0
         is_causal = False
         _attention_call = _sdpa_or_flex_attention()
-        _ = _attention_call(q, k, v, score_mod, attn_mask, dropout_p, is_causal)
+        _ = _attention_call(q, k, v, score_mod, attn_mask, scale, dropout_p, is_causal)
         mock_sdpa.assert_called_once()
