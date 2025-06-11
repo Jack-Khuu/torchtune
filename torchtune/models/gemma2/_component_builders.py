@@ -307,6 +307,12 @@ def lora_gemma2(
             use_dora=use_dora,
             quantize_base=quantize_base,
         )
+        # Sliding window is applied on half of the layers only
+        mask_mod = (
+            partial(get_sliding_attention_mask, sliding_window_size=sliding_window_size)
+            if _SUPPORTS_FLEX_ATTENTION and (layer_idx % 2) == 0
+            else None
+        )
 
         layer = TransformerSelfAttentionLayer(
             attn=self_att,
@@ -315,6 +321,7 @@ def lora_gemma2(
             mlp_norm=GemmaRMSNorm(embed_dim, eps=norm_eps),
             sa_scale=GemmaRMSNorm(embed_dim, eps=norm_eps),
             mlp_scale=GemmaRMSNorm(embed_dim, eps=norm_eps),
+            mask_mod=mask_mod,
         )
         layers.append(layer)
 
@@ -438,21 +445,41 @@ def lora_gemma2_self_attention(
         dim=head_dim, max_seq_len=max_seq_len, base=rope_base
     )
 
-    self_att = Gemma2Attention(
-        embed_dim=embed_dim,
-        num_heads=num_heads,
-        num_kv_heads=num_kv_heads,
-        head_dim=head_dim,
-        q_proj=q_proj,
-        k_proj=k_proj,
-        v_proj=v_proj,
-        output_proj=output_proj,
-        pos_embeddings=rope,
-        kv_cache=None,
-        max_seq_len=max_seq_len,
-        attn_dropout=attn_dropout,
-        sliding_window_size=sliding_window_size,
-        softcapping=softcapping,
-        query_pre_attn_scalar=query_pre_attn_scalar,
-    )
+    if _SUPPORTS_FLEX_ATTENTION:
+        self_att = MultiHeadAttention(
+            embed_dim=embed_dim,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            head_dim=head_dim,
+            q_proj=q_proj,
+            k_proj=k_proj,
+            v_proj=v_proj,
+            output_proj=output_proj,
+            pos_embeddings=rope,
+            kv_cache=None,
+            max_seq_len=max_seq_len,
+            attn_dropout=attn_dropout,
+            score_mod=(
+                None if softcapping is None else get_softcap_score_mod(softcapping)
+            ),
+            scale=(query_pre_attn_scalar or head_dim) ** -0.5,
+        )
+    else:
+        self_att = Gemma2Attention(
+            embed_dim=embed_dim,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            head_dim=head_dim,
+            q_proj=q_proj,
+            k_proj=k_proj,
+            v_proj=v_proj,
+            output_proj=output_proj,
+            pos_embeddings=rope,
+            kv_cache=None,
+            max_seq_len=max_seq_len,
+            attn_dropout=attn_dropout,
+            sliding_window_size=sliding_window_size,
+            softcapping=softcapping,
+            query_pre_attn_scalar=query_pre_attn_scalar,
+        )
     return self_att
