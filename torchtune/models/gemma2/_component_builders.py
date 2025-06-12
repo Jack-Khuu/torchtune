@@ -15,6 +15,11 @@ from torchtune.models.gemma.rms_norm import GemmaRMSNorm
 
 from torchtune.models.gemma2._attention import Gemma2Attention
 
+from torchtune.models.gemma2._attention_mask import (
+    get_sliding_attention_mask,
+    get_softcap_score_mod,
+)
+
 from torchtune.modules import (
     FrozenNF4Linear,
     RotaryPositionalEmbeddings,
@@ -25,14 +30,6 @@ from torchtune.modules import (
 from torchtune.modules.attention import MultiHeadAttention
 from torchtune.modules.common_utils import _register_reparametrize_state_dict_hooks
 from torchtune.modules.peft import DoRALinear, LORA_ATTN_MODULES, LoRALinear
-
-from torchtune.utils._import_guard import _SUPPORTS_FLEX_ATTENTION
-
-if _SUPPORTS_FLEX_ATTENTION:
-    from torchtune.models.gemma2._attention_mask import (
-        get_sliding_attention_mask,
-        get_softcap_score_mod,
-    )
 
 """
 Component builders for the Gemma2 2B, 9B models and popular variants such as LoRA.
@@ -45,6 +42,9 @@ can take either nn.Linear or nn.LoRALinear for ``q_proj``.
 - Builder functions expose a set of configurable params which keep the constructors of
 the building blocks simple.
 """
+
+# TODO: Remove; Used for testing migration from manual Attention to MHA
+USE_MHA = True
 
 
 class TanhSoftCapping(nn.Module):
@@ -131,7 +131,7 @@ def gemma2(
 
         # Since `nn.SPDA` doesn't support SoftCapping, soft capping is skipped
         # when using `nn.SPDA` for attention
-        if _SUPPORTS_FLEX_ATTENTION:
+        if USE_MHA:
             self_att = MultiHeadAttention(
                 embed_dim=embed_dim,
                 num_heads=num_heads,
@@ -310,7 +310,7 @@ def lora_gemma2(
         # Sliding window is applied on half of the layers only
         mask_mod = (
             partial(get_sliding_attention_mask, sliding_window_size=sliding_window_size)
-            if _SUPPORTS_FLEX_ATTENTION and (layer_idx % 2) == 0
+            if USE_MHA and (layer_idx % 2) == 0
             else None
         )
 
@@ -445,7 +445,7 @@ def lora_gemma2_self_attention(
         dim=head_dim, max_seq_len=max_seq_len, base=rope_base
     )
 
-    if _SUPPORTS_FLEX_ATTENTION:
+    if USE_MHA:
         self_att = MultiHeadAttention(
             embed_dim=embed_dim,
             num_heads=num_heads,

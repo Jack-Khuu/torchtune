@@ -4,7 +4,10 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-from typing import Optional
+from typing import Callable, Optional
+
+import torch
+from torch import Tensor
 
 from torchtune.modules.attention_utils import (
     _MaskType,
@@ -12,57 +15,105 @@ from torchtune.modules.attention_utils import (
     causal_mask_flex,
 )
 
+
+def get_softcap_score_mod(softcapping: float) -> Callable:
+    """
+    Inspired by https://pytorch.org/blog/flexattention/
+
+    Args:
+        softcapping (float): Softcapping value to apply to the attention scores.
+
+    Returns:
+        A flex attention score mod that applies softcapping.
+        (Specific Callable type is _score_mod_signature)
+    """
+
+    def softcap_score_mod(
+        score: Tensor, _b: Tensor, _h: Tensor, _q: Tensor, _kv_idx: Tensor
+    ) -> Tensor:
+        score = score / softcapping
+        score = torch.tanh(score)
+        return score * softcapping
+
+    return softcap_score_mod
+
+
+def get_sliding_attention_mask(
+    mask: Optional[_MaskType],
+    sliding_window_size: int,
+    bsz: int,
+    seq_len: int,
+    device: Optional[torch.device] = None,
+) -> _MaskType:
+    """
+    Args:
+        mask (Optional[_MaskType]): Mask to apply to the attention scores.
+        sliding_window_size (int): Sliding window size to apply to the attention mask.
+        bsz (int): Batch size. Argument is unused, but listed for consistency.
+        seq_len (int): Sequence length.
+        device (Optional[torch.device]): Device to use for the mask. Defaults to None.
+
+    Returns:
+        A tensor mask that applies sliding window masking.
+
+    Raises:
+        ValueError: If the input mask is not a Tensor
+    """
+    if mask is None:
+        mask = torch.tril(
+            torch.ones(size=(bsz, seq_len, seq_len), dtype=torch.bool).to(device)
+        )
+
+    if not isinstance(mask, torch.Tensor):
+        raise ValueError(
+            f"For non-flex attention, mask must be a Tensor. Got: {type(mask)}"
+        )
+
+    if mask.dtype == torch.bool:
+        mask = torch.where(mask.logical_not(), -2.3819763e38, 0)
+        all_ones = torch.ones_like(mask)
+        sliding_mask = torch.triu(all_ones, -1 * sliding_window_size + 1) * torch.tril(
+            all_ones, sliding_window_size - 1
+        )
+        mask = torch.where(sliding_mask == 1, mask, -2.3819763e38)
+
+    if mask.dim() == 3:
+        # This is the case for block masks where attention is different per sample
+        # we want mask to be broadcastable with output so we aim for (bs, 1, s_x, s_y)
+        mask = mask.unsqueeze(1)
+
+    return mask
+
+
 if _SUPPORTS_FLEX_ATTENTION:
-    import torch
-    from torch import Tensor
-    from torch.nn.attention.flex_attention import (
-        _score_mod_signature,
-        create_block_mask,
-    )
+    from torch.nn.attention.flex_attention import create_block_mask
 
-    def get_softcap_score_mod(softcapping: float) -> _score_mod_signature:
-        """
-        Inspired by https://pytorch.org/blog/flexattention/
-
-        Args:
-            softcapping (float): Softcapping value to apply to the attention scores.
-
-        Returns:
-            A flex attention score mod that applies softcapping.
-        """
-
-        def softcap_score_mod(
-            score: Tensor, _b: Tensor, _h: Tensor, _q: Tensor, _kv_idx: Tensor
-        ) -> Tensor:
-            score = score / softcapping
-            score = torch.tanh(score)
-            return score * softcapping
-
-        return softcap_score_mod
-
-    def get_sliding_attention_mask(
+    def get_sliding_attention_mask_2(
         mask: Optional[_MaskType],
         sliding_window_size: int,
         bsz: int,
         seq_len: int,
+        device: Optional[torch.device] = None,
     ) -> _MaskType:
         """
-        Inspired by https://pytorch.org/blog/flexattention/
+        Inspired by https://pytorch.org/blog/flexattention/.
+        Note: That this overrides the non-flex implementation
 
         Args:
             mask (Optional[_MaskType]): Mask to apply to the attention scores.
             sliding_window_size (int): Sliding window size to apply to the attention mask.
             bsz (int): Batch size.
             seq_len (int): Sequence length.
+            device (Optional[torch.device]): Device to use for the mask. Argument is unused
+                but listed for consistency. Defaults to None.
 
         Returns:
-            A flex attention mask mod that applies sliding window masking.
+            A flex attention block mask that applies sliding window masking.
 
         Raises:
-            ValueError: If flex attention is not supported or mask has a wrong type.
+            ValueError: If the input mask is not a BlockMask (flex).
         """
-        if not _SUPPORTS_FLEX_ATTENTION:
-            raise ValueError("Local attention is only supported with flex attention.")
+        # Flex attention BlockMask
         if mask is None:
             mask_mod = causal_mask_flex
             q_seq_len, kv_seq_len = seq_len, seq_len

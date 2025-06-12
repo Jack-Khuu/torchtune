@@ -202,8 +202,8 @@ def _sdpa_or_flex_attention() -> Callable:
         q: torch.Tensor,
         k: torch.Tensor,
         v: torch.Tensor,
-        # Args is unused, but listed for consistency with the flex attention
-        _score_mod: Optional[Callable],
+        # score_mod is unused, but listed for consistency with the flex attention
+        score_mod: Optional[Callable],
         mask: Optional[_MaskType],
         scale: Optional[float],
         dropout_p: float,
