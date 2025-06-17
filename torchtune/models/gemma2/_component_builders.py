@@ -129,6 +129,8 @@ def gemma2(
     layers = torch.nn.ModuleList()
     for layer_idx in range(num_layers):
 
+        mlp = gemma_mlp(dim=embed_dim, hidden_dim=intermediate_dim)
+
         # Since `nn.SPDA` doesn't support SoftCapping, soft capping is skipped
         # when using `nn.SPDA` for attention
         if USE_MHA:
@@ -180,7 +182,6 @@ def gemma2(
             )
             mask_mod = None
 
-        mlp = gemma_mlp(dim=embed_dim, hidden_dim=intermediate_dim)
         layer = TransformerSelfAttentionLayer(
             attn=self_att,
             mlp=mlp,

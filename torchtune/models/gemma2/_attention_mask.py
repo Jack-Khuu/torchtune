@@ -75,12 +75,7 @@ def get_sliding_attention_mask(
         sliding_mask = torch.triu(all_ones, -1 * sliding_window_size + 1) * torch.tril(
             all_ones, sliding_window_size - 1
         )
-        mask = torch.where(sliding_mask == 1, mask, -2.3819763e38)
-
-    if mask.dim() == 3:
-        # This is the case for block masks where attention is different per sample
-        # we want mask to be broadcastable with output so we aim for (bs, 1, s_x, s_y)
-        mask = mask.unsqueeze(1)
+        mask = torch.where(sliding_mask == 1, mask, -2.3819763e38).to(torch.bfloat16)
 
     return mask
 
