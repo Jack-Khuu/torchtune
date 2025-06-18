@@ -17,7 +17,6 @@ _log: logging.Logger = get_logger()
 
 if _SUPPORTS_FLEX_ATTENTION:
     from torch.nn.attention.flex_attention import (
-        _score_mod_signature,
         BlockMask,
         create_block_mask as create_block_causal_mask_flex,
         flex_attention,
@@ -53,13 +52,10 @@ if _SUPPORTS_FLEX_ATTENTION:
         q: torch.Tensor,
         k: torch.Tensor,
         v: torch.Tensor,
-        score_mod: Optional[_score_mod_signature],
         block_mask: BlockMask,
         scale: Optional[float] = None,
     ) -> torch.Tensor:
-        return flex_attention_compiled(
-            q, k, v, score_mod=score_mod, block_mask=block_mask, scale=scale
-        )
+        return flex_attention_compiled(q, k, v, block_mask=block_mask, scale=scale)
 
     _MaskType = Union[torch.Tensor, BlockMask]
 else:
@@ -202,8 +198,6 @@ def _sdpa_or_flex_attention() -> Callable:
         q: torch.Tensor,
         k: torch.Tensor,
         v: torch.Tensor,
-        # score_mod is unused, but listed for consistency with the flex attention
-        score_mod: Optional[Callable],
         mask: Optional[_MaskType],
         scale: Optional[float],
         dropout_p: float,
@@ -232,7 +226,6 @@ def _sdpa_or_flex_attention() -> Callable:
         q: torch.Tensor,
         k: torch.Tensor,
         v: torch.Tensor,
-        score_mod: Optional[_score_mod_signature],
         mask: Optional[_MaskType],
         scale: Optional[float],
         dropout_p: float,
@@ -244,7 +237,7 @@ def _sdpa_or_flex_attention() -> Callable:
         # we assume the user wants to use flex attention instead of traditional SDPA.
         # This will use flash attention under the hood with support for custom masks.
         # Currently, it is used when sample packing is enabled (see torchtune.datasets.PackedDataset)
-        if isinstance(mask, BlockMask) or (mask is None and score_mod is not None):
+        if isinstance(mask, BlockMask):
             if not torch.compiler.is_compiling():
                 log_once(
                     _log,
@@ -259,13 +252,12 @@ def _sdpa_or_flex_attention() -> Callable:
                 q,
                 k,
                 v,
-                score_mod=score_mod,
                 block_mask=mask,
                 scale=scale,
             )
         else:
             # If mask is a standard boolean tensor or None, then use SDPA
-            return _sdpa_call(q, k, v, score_mod, mask, scale, dropout_p, is_causal)
+            return _sdpa_call(q, k, v, mask, scale, dropout_p, is_causal)
 
     return _attention_call
 

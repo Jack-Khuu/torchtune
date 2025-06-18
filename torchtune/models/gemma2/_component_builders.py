@@ -15,10 +15,7 @@ from torchtune.models.gemma.rms_norm import GemmaRMSNorm
 
 from torchtune.models.gemma2._attention import Gemma2Attention
 
-from torchtune.models.gemma2._attention_mask import (
-    get_sliding_attention_mask,
-    get_softcap_score_mod,
-)
+from torchtune.models.gemma2._attention_mask import get_sliding_attention_mask
 
 from torchtune.modules import (
     FrozenNF4Linear,
@@ -42,9 +39,6 @@ can take either nn.Linear or nn.LoRALinear for ``q_proj``.
 - Builder functions expose a set of configurable params which keep the constructors of
 the building blocks simple.
 """
-
-# TODO: Remove; Used for testing migration from manual Attention to MHA
-USE_MHA = True
 
 
 class TanhSoftCapping(nn.Module):
@@ -147,7 +141,6 @@ def gemma2(
                 kv_cache=None,
                 max_seq_len=max_seq_len,
                 attn_dropout=attn_dropout,
-                score_mod=get_softcap_score_mod(hidden_capping_value),
                 scale=(query_pre_attn_scalar or head_dim) ** -0.5,
             )
             # Sliding window is applied on half of the layers only
@@ -460,9 +453,6 @@ def lora_gemma2_self_attention(
             kv_cache=None,
             max_seq_len=max_seq_len,
             attn_dropout=attn_dropout,
-            # score_mod=(
-            #     None if softcapping is None else get_softcap_score_mod(softcapping)
-            # ),
             scale=(query_pre_attn_scalar or head_dim) ** -0.5,
         )
     else:

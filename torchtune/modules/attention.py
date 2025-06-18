@@ -71,9 +71,6 @@ class MultiHeadAttention(nn.Module):
         is_causal (bool): sets the default mask to causal when no mask is provided
         attn_dropout (float): dropout value passed onto the scaled_dot_product_attention function.
             Default value is 0.0.
-        score_mod (Optional[Callable]): True type is `flex_attention._score_mod_signature`. Used to modify the
-            scores after the query-key multiplication and before the softmax. Only leveraged when using
-            flexattention. Default is None.
         scale (Optional[float]): Optional arg, passed to attention implementations to modify the scores after
             query-key multiplication before the softmax. Default is None.
 
@@ -103,7 +100,6 @@ class MultiHeadAttention(nn.Module):
         max_seq_len: int = 4096,
         is_causal: bool = True,
         attn_dropout: float = 0.0,
-        score_mod: Optional[Callable] = None,
         scale: Optional[float] = None,
     ) -> None:
         super().__init__()
@@ -147,7 +143,6 @@ class MultiHeadAttention(nn.Module):
         self._attention_call = _sdpa_or_flex_attention()
 
         # Set attention arguments
-        self.score_mod = score_mod
         self.scale = scale
 
         # this flag indicates whether to update the kv-cache during forward
@@ -304,7 +299,6 @@ class MultiHeadAttention(nn.Module):
             q,
             k,
             v,
-            score_mod=self.score_mod,
             mask=mask,
             scale=self.scale,
             dropout_p=self.attn_dropout if self.training else 0.0,
