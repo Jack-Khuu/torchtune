@@ -460,9 +460,9 @@ def lora_gemma2_self_attention(
             kv_cache=None,
             max_seq_len=max_seq_len,
             attn_dropout=attn_dropout,
-            score_mod=(
-                None if softcapping is None else get_softcap_score_mod(softcapping)
-            ),
+            # score_mod=(
+            #     None if softcapping is None else get_softcap_score_mod(softcapping)
+            # ),
             scale=(query_pre_attn_scalar or head_dim) ** -0.5,
         )
     else:

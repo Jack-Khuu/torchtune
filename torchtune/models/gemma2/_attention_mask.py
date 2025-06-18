@@ -112,10 +112,10 @@ def get_sliding_attention_mask(
     """
 
     # If flex attention is supported, use the flex attention mask
-    if _SUPPORTS_FLEX_ATTENTION:
-        return _get_flex_sliding_attention_mask(
-            mask, sliding_window_size, bsz, seq_len, device
-        )
+    # if _SUPPORTS_FLEX_ATTENTION:
+    #     return _get_flex_sliding_attention_mask(
+    #         mask, sliding_window_size, bsz, seq_len, device
+    #     )
 
     if mask is None:
         mask = torch.tril(
