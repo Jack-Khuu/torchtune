@@ -13,8 +13,6 @@ from torchtune.models.gemma._component_builders import gemma_mlp, lora_gemma_mlp
 from torchtune.models.gemma.gemma_norm_embedding import GemmaNormEmbeddings
 from torchtune.models.gemma.rms_norm import GemmaRMSNorm
 
-from torchtune.models.gemma2._attention import Gemma2Attention
-
 from torchtune.models.gemma2._attention_mask import get_sliding_attention_mask
 
 from torchtune.modules import (
@@ -126,54 +124,28 @@ def gemma2(
         mlp = gemma_mlp(dim=embed_dim, hidden_dim=intermediate_dim)
 
         # Since `nn.SPDA` doesn't support SoftCapping, soft capping is skipped
-        # when using `nn.SPDA` for attention
-        if USE_MHA:
-            self_att = MultiHeadAttention(
-                embed_dim=embed_dim,
-                num_heads=num_heads,
-                num_kv_heads=num_kv_heads,
-                head_dim=head_dim,
-                q_proj=nn.Linear(embed_dim, num_heads * head_dim, bias=False),
-                k_proj=nn.Linear(embed_dim, num_kv_heads * head_dim, bias=False),
-                v_proj=nn.Linear(embed_dim, num_kv_heads * head_dim, bias=False),
-                output_proj=nn.Linear(num_heads * head_dim, embed_dim, bias=False),
-                pos_embeddings=rope,
-                kv_cache=None,
-                max_seq_len=max_seq_len,
-                attn_dropout=attn_dropout,
-                scale=(query_pre_attn_scalar or head_dim) ** -0.5,
-            )
-            # Sliding window is applied on half of the layers only
-            mask_mod = (
-                partial(
-                    get_sliding_attention_mask, sliding_window_size=sliding_window_size
-                )
-                if (layer_idx % 2) == 0
-                else None
-            )
-        else:
-            self_att = Gemma2Attention(
-                embed_dim=embed_dim,
-                num_heads=num_heads,
-                num_kv_heads=num_kv_heads,
-                head_dim=head_dim,
-                q_proj=nn.Linear(embed_dim, num_heads * head_dim, bias=False),
-                k_proj=nn.Linear(embed_dim, num_kv_heads * head_dim, bias=False),
-                v_proj=nn.Linear(embed_dim, num_kv_heads * head_dim, bias=False),
-                output_proj=nn.Linear(num_heads * head_dim, embed_dim, bias=False),
-                pos_embeddings=rope,
-                kv_cache=None,
-                max_seq_len=max_seq_len,
-                attn_dropout=attn_dropout,
-                # perform sliding window on half of the layers only
-                # These are args that are unique to the Gemma2 implementation
-                sliding_window_size=(
-                    sliding_window_size if (layer_idx % 2) == 0 else None
-                ),
-                softcapping=hidden_capping_value,
-                query_pre_attn_scalar=query_pre_attn_scalar,
-            )
-            mask_mod = None
+        self_att = MultiHeadAttention(
+            embed_dim=embed_dim,
+            num_heads=num_heads,
+            num_kv_heads=num_kv_heads,
+            head_dim=head_dim,
+            q_proj=nn.Linear(embed_dim, num_heads * head_dim, bias=False),
+            k_proj=nn.Linear(embed_dim, num_kv_heads * head_dim, bias=False),
+            v_proj=nn.Linear(embed_dim, num_kv_heads * head_dim, bias=False),
+            output_proj=nn.Linear(num_heads * head_dim, embed_dim, bias=False),
+            pos_embeddings=rope,
+            kv_cache=None,
+            max_seq_len=max_seq_len,
+            attn_dropout=attn_dropout,
+            scale=(query_pre_attn_scalar or head_dim) ** -0.5,
+        )
+        # Sliding window is applied on half of the layers only
+        # Currently returns a Tensor Mask so FlashAttention is not used
+        mask_mod = (
+            partial(get_sliding_attention_mask, sliding_window_size=sliding_window_size)
+            if (layer_idx % 2) == 0
+            else None
+        )
 
         layer = TransformerSelfAttentionLayer(
             attn=self_att,
@@ -302,6 +274,7 @@ def lora_gemma2(
             quantize_base=quantize_base,
         )
         # Sliding window is applied on half of the layers only
+        # Currently returns a Tensor Mask so FlashAttention is not used
         mask_mod = (
             partial(get_sliding_attention_mask, sliding_window_size=sliding_window_size)
             if USE_MHA and (layer_idx % 2) == 0
@@ -361,7 +334,7 @@ def lora_gemma2_self_attention(
     lora_dropout: float = 0.0,
     use_dora: bool = False,
     quantize_base: bool = False,
-) -> Gemma2Attention:
+) -> MultiHeadAttention:
     if not lora_modules:
         raise ValueError(
             f"Must pass one or more of {LORA_ATTN_MODULES} as lora_modules"
@@ -439,38 +412,20 @@ def lora_gemma2_self_attention(
         dim=head_dim, max_seq_len=max_seq_len, base=rope_base
     )
 
-    if USE_MHA:
-        self_att = MultiHeadAttention(
-            embed_dim=embed_dim,
-            num_heads=num_heads,
-            num_kv_heads=num_kv_heads,
-            head_dim=head_dim,
-            q_proj=q_proj,
-            k_proj=k_proj,
-            v_proj=v_proj,
-            output_proj=output_proj,
-            pos_embeddings=rope,
-            kv_cache=None,
-            max_seq_len=max_seq_len,
-            attn_dropout=attn_dropout,
-            scale=(query_pre_attn_scalar or head_dim) ** -0.5,
-        )
-    else:
-        self_att = Gemma2Attention(
-            embed_dim=embed_dim,
-            num_heads=num_heads,
-            num_kv_heads=num_kv_heads,
-            head_dim=head_dim,
-            q_proj=q_proj,
-            k_proj=k_proj,
-            v_proj=v_proj,
-            output_proj=output_proj,
-            pos_embeddings=rope,
-            kv_cache=None,
-            max_seq_len=max_seq_len,
-            attn_dropout=attn_dropout,
-            sliding_window_size=sliding_window_size,
-            softcapping=softcapping,
-            query_pre_attn_scalar=query_pre_attn_scalar,
-        )
+    # Since `nn.SPDA` doesn't support SoftCapping, soft capping is skipped
+    self_att = MultiHeadAttention(
+        embed_dim=embed_dim,
+        num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim=head_dim,
+        q_proj=q_proj,
+        k_proj=k_proj,
+        v_proj=v_proj,
+        output_proj=output_proj,
+        pos_embeddings=rope,
+        kv_cache=None,
+        max_seq_len=max_seq_len,
+        attn_dropout=attn_dropout,
+        scale=(query_pre_attn_scalar or head_dim) ** -0.5,
+    )
     return self_att
