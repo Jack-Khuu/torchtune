@@ -9,8 +9,6 @@ import torch
 
 from torchtune.models.gemma2._attention_mask import get_sliding_attention_mask
 
-NEG_INF = -2.3819763e38
-
 
 class TestGetSlidingAttentionMask:
     @pytest.fixture
@@ -19,6 +17,9 @@ class TestGetSlidingAttentionMask:
 
     def test_get_sliding_attention_mask(self, basic_params):
         """Test that when mask is None, a causal mask is created and sliding window is applied."""
+        bsz = 2
+        seq_len = 4
+        sliding_window_size = 2
         mask = get_sliding_attention_mask(
             mask=None,
             sliding_window_size=basic_params["sliding_window_size"],
@@ -32,63 +33,24 @@ class TestGetSlidingAttentionMask:
             basic_params["seq_len"],
             basic_params["seq_len"],
         )
+        assert mask.dtype == torch.bool
 
         # Check that the mask has the expected sliding window pattern
-        # Non-masked positions should be 0, masked positions should be -2.3819763e38
+        # True positions can be attended to, False positions are masked
         expected_pattern = torch.tensor(
             [
-                [0.0, NEG_INF, NEG_INF, NEG_INF],
-                [0.0, 0.0, NEG_INF, NEG_INF],
-                [NEG_INF, 0.0, 0.0, NEG_INF],
-                [NEG_INF, NEG_INF, 0.0, 0.0],
+                [True, False, False, False],
+                [True, True, False, False],
+                [False, True, True, False],
+                [False, False, True, True],
             ],
-            dtype=torch.bfloat16,
+            dtype=torch.bool,
         )
 
         # Check first batch element
-        torch.testing.assert_close(mask[0], expected_pattern, rtol=1e-4, atol=1e-4)
+        torch.testing.assert_close(mask[0], expected_pattern)
         # All batch elements should be identical
-        torch.testing.assert_close(mask[0], mask[1], rtol=1e-4, atol=1e-4)
-
-    def test_get_sliding_attention_mask_with_bool_mask(self, basic_params):
-        """Test sliding window application on an existing boolean mask."""
-        # Create a custom boolean mask (causal mask)
-        input_mask = torch.tril(
-            torch.ones(
-                basic_params["bsz"],
-                basic_params["seq_len"],
-                basic_params["seq_len"],
-                dtype=torch.bool,
-            )
-        )
-
-        mask = get_sliding_attention_mask(
-            mask=input_mask,
-            sliding_window_size=basic_params["sliding_window_size"],
-            bsz=basic_params["bsz"],
-            seq_len=basic_params["seq_len"],
-            device=basic_params["device"],
-        )
-
-        assert mask.shape == (
-            basic_params["bsz"],
-            basic_params["seq_len"],
-            basic_params["seq_len"],
-        )
-        assert mask.dtype == torch.bfloat16
-
-        # Should apply sliding window to the provided mask
-        expected_pattern = torch.tensor(
-            [
-                [0.0, NEG_INF, NEG_INF, NEG_INF],
-                [0.0, 0.0, NEG_INF, NEG_INF],
-                [NEG_INF, 0.0, 0.0, NEG_INF],
-                [NEG_INF, NEG_INF, 0.0, 0.0],
-            ],
-            dtype=torch.bfloat16,
-        )
-
-        torch.testing.assert_close(mask[0], expected_pattern, rtol=1e-4, atol=1e-4)
+        torch.testing.assert_close(mask[0], mask[1])
 
     def test_get_sliding_attention_mask_different_window_sizes(self):
         """Test sliding window with different window sizes."""
@@ -105,16 +67,16 @@ class TestGetSlidingAttentionMask:
 
         expected_window_1 = torch.tensor(
             [
-                [0.0, NEG_INF, NEG_INF, NEG_INF, NEG_INF],
-                [NEG_INF, 0.0, NEG_INF, NEG_INF, NEG_INF],
-                [NEG_INF, NEG_INF, 0.0, NEG_INF, NEG_INF],
-                [NEG_INF, NEG_INF, NEG_INF, 0.0, NEG_INF],
-                [NEG_INF, NEG_INF, NEG_INF, NEG_INF, 0.0],
+                [True, False, False, False, False],
+                [False, True, False, False, False],
+                [False, False, True, False, False],
+                [False, False, False, True, False],
+                [False, False, False, False, True],
             ],
-            dtype=torch.bfloat16,
+            dtype=torch.bool,
         )
 
-        torch.testing.assert_close(mask[0], expected_window_1, rtol=1e-4, atol=1e-4)
+        torch.testing.assert_close(mask[0], expected_window_1)
 
         # Test window size 3
         mask = get_sliding_attention_mask(
@@ -127,16 +89,16 @@ class TestGetSlidingAttentionMask:
 
         expected_window_3 = torch.tensor(
             [
-                [0.0, NEG_INF, NEG_INF, NEG_INF, NEG_INF],
-                [0.0, 0.0, NEG_INF, NEG_INF, NEG_INF],
-                [0.0, 0.0, 0.0, NEG_INF, NEG_INF],
-                [NEG_INF, 0.0, 0.0, 0.0, NEG_INF],
-                [NEG_INF, NEG_INF, 0.0, 0.0, 0.0],
+                [True, False, False, False, False],
+                [True, True, False, False, False],
+                [True, True, True, False, False],
+                [False, True, True, True, False],
+                [False, False, True, True, True],
             ],
-            dtype=torch.bfloat16,
+            dtype=torch.bool,
         )
 
-        torch.testing.assert_close(mask[0], expected_window_3, rtol=1e-4, atol=1e-4)
+        torch.testing.assert_close(mask[0], expected_window_3)
 
     def test_get_sliding_attention_mask_large_window(self):
         """Test sliding window larger than sequence length."""
@@ -154,11 +116,11 @@ class TestGetSlidingAttentionMask:
         # Should behave like a regular causal mask when window is larger than seq_len
         expected_causal = torch.tensor(
             [
-                [0.0, NEG_INF, NEG_INF],
-                [0.0, 0.0, NEG_INF],
-                [0.0, 0.0, 0.0],
+                [True, False, False],
+                [True, True, False],
+                [True, True, True],
             ],
-            dtype=torch.bfloat16,
+            dtype=torch.bool,
         )
 
-        torch.testing.assert_close(mask[0], expected_causal, rtol=1e-4, atol=1e-4)
+        torch.testing.assert_close(mask[0], expected_causal)

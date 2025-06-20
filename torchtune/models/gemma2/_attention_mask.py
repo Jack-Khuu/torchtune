@@ -43,12 +43,10 @@ def get_sliding_attention_mask(
             f"For non-flex attention, mask must be a Tensor. Got: {type(mask)}"
         )
 
-    if mask.dtype == torch.bool:
-        mask = torch.where(mask.logical_not(), -2.3819763e38, 0)
-        all_ones = torch.ones_like(mask)
-        sliding_mask = torch.triu(all_ones, -1 * sliding_window_size + 1) * torch.tril(
-            all_ones, sliding_window_size - 1
-        )
-        mask = torch.where(sliding_mask == 1, mask, -2.3819763e38).to(torch.bfloat16)
+    all_ones = torch.ones_like(mask, dtype=torch.bool)
+    sliding_mask = torch.triu(all_ones, -1 * sliding_window_size + 1) & torch.tril(
+        all_ones, sliding_window_size - 1
+    )
+    mask = mask & sliding_mask
 
     return mask
