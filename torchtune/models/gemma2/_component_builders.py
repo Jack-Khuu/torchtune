@@ -277,7 +277,7 @@ def lora_gemma2(
         # Currently returns a Tensor Mask so FlashAttention is not used
         mask_mod = (
             partial(get_sliding_attention_mask, sliding_window_size=sliding_window_size)
-            if USE_MHA and (layer_idx % 2) == 0
+            if (layer_idx % 2) == 0
             else None
         )
 
