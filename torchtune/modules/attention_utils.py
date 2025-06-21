@@ -54,8 +54,11 @@ if _SUPPORTS_FLEX_ATTENTION:
         v: torch.Tensor,
         block_mask: BlockMask,
         scale: Optional[float] = None,
+        score_mod: Optional[Callable] = None,
     ) -> torch.Tensor:
-        return flex_attention_compiled(q, k, v, block_mask=block_mask, scale=scale)
+        return flex_attention_compiled(
+            q, k, v, score_mod=score_mod, block_mask=block_mask, scale=scale
+        )
 
     _MaskType = Union[torch.Tensor, BlockMask]
 else:
@@ -202,6 +205,8 @@ def _sdpa_or_flex_attention() -> Callable:
         dropout_p: float,
         is_causal: bool,
         scale: Optional[float] = None,
+        # score_mod is unused, but listed for consistency with flex_attention.
+        score_mod: Optional[Callable] = None,
     ) -> torch.Tensor:
         # shape: [b, 1, s, s]
         if mask is not None:
@@ -230,6 +235,7 @@ def _sdpa_or_flex_attention() -> Callable:
         dropout_p: float,
         is_causal: bool,
         scale: Optional[float] = None,
+        score_mod: Optional[Callable] = None,
     ) -> torch.Tensor:
         # Flex attention uses the BlockMask
         # (https://github.com/pytorch/pytorch/blob/main/torch/nn/attention/flex_attention.py#L168)
@@ -254,6 +260,7 @@ def _sdpa_or_flex_attention() -> Callable:
                 v,
                 block_mask=mask,
                 scale=scale,
+                score_mod=score_mod,
             )
         else:
             # If mask is a standard boolean tensor or None, then use SDPA

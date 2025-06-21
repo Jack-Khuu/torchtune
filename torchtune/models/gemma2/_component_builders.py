@@ -13,7 +13,10 @@ from torchtune.models.gemma._component_builders import gemma_mlp, lora_gemma_mlp
 from torchtune.models.gemma.gemma_norm_embedding import GemmaNormEmbeddings
 from torchtune.models.gemma.rms_norm import GemmaRMSNorm
 
-from torchtune.models.gemma2._attention_mask import get_sliding_attention_mask
+from torchtune.models.gemma2._attention_mask import (
+    get_sliding_attention_mask,
+    get_softcap_score_mod,
+)
 
 from torchtune.modules import (
     FrozenNF4Linear,
@@ -138,6 +141,7 @@ def gemma2(
             max_seq_len=max_seq_len,
             attn_dropout=attn_dropout,
             scale=(query_pre_attn_scalar or head_dim) ** -0.5,
+            score_mod=get_softcap_score_mod(hidden_capping_value),
         )
         # Sliding window is applied on half of the layers only
         # Currently returns a Tensor Mask so FlashAttention is not used
@@ -263,8 +267,6 @@ def lora_gemma2(
             rope_base=rope_base,
             max_seq_len=max_seq_len,
             attn_dropout=attn_dropout,
-            # perform sliding window on half of the layers only
-            sliding_window_size=sliding_window_size if (layer_idx % 2) == 0 else None,
             softcapping=hidden_capping_value,
             query_pre_attn_scalar=query_pre_attn_scalar,
             lora_rank=lora_rank,
@@ -325,8 +327,7 @@ def lora_gemma2_self_attention(
     max_seq_len: int,
     attn_dropout: float = 0.0,
     rope_base: int = 10_000,
-    sliding_window_size: Optional[int] = None,
-    softcapping: Optional[float] = 50.0,
+    softcapping: float = 50.0,
     query_pre_attn_scalar: Optional[int],
     # LoRA args
     lora_rank: int,
@@ -427,5 +428,6 @@ def lora_gemma2_self_attention(
         max_seq_len=max_seq_len,
         attn_dropout=attn_dropout,
         scale=(query_pre_attn_scalar or head_dim) ** -0.5,
+        score_mod=get_softcap_score_mod(softcapping),
     )
     return self_att

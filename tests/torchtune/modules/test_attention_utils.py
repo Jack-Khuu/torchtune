@@ -120,9 +120,14 @@ class TestSDPAOrFlexAttention:
             "torchtune.modules.attention_utils.isinstance", return_value=True
         ):
             _attention_call = _sdpa_or_flex_attention()
-            _ = _attention_call(q, k, v, attn_mask, dropout_p, is_causal)
+            score_mod = lambda score, _b, _h, _q_idx, kv_idx: score
+            _ = _attention_call(
+                q, k, v, attn_mask, dropout_p, is_causal, score_mod=score_mod
+            )
             mock_sdpa.assert_not_called()
-            mock_flex.assert_called_with(q, k, v, block_mask=attn_mask, scale=None)
+            mock_flex.assert_called_with(
+                q, k, v, block_mask=attn_mask, scale=None, score_mod=score_mod
+            )
         # If mask is not a BlockMask, then we should call SDPA
         _attention_call = _sdpa_or_flex_attention()
         _ = _attention_call(q, k, v, attn_mask, dropout_p, is_causal)
